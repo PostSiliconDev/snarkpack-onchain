@@ -35,7 +35,6 @@ pub fn verify_aggregate_proof<E: Pairing, R: Rng>(
     proof: &AggregateProof<E>,
     rng: R,
 ) -> Result<(), Error> {
-    dbg!("verify_aggregate_proof");
     proof.parsing_check()?;
     for pub_input in public_inputs {
         if (pub_input.len() + 1) != pvk.vk.gamma_abc_g1.len() {
@@ -62,13 +61,12 @@ pub fn verify_aggregate_proof<E: Pairing, R: Rng>(
     let mut acc = PairingCheck::new(rng);
 
     // 2.Check TIPA proof
-    verify_tipp_mipp(ip_verifier_srs, proof, &r, &mut transcript, &mut acc);
+    verify_tipp_mipp(ip_verifier_srs, proof, &r, &mut transcript, &mut acc)?;
 
     // Check aggregate pairing product equation
     // SUM of a geometric progression
     // SUM a^i = (1 - a^n) / (1 - a) = -(1-a^n)/-(1-a)
     // = (a^n - 1) / (a - 1)
-    dbg!("checking aggregate pairing");
     let mut r_sum = r.pow(&[public_inputs.len() as u64]);
     r_sum.sub_assign(&E::ScalarField::one());
     let b = sub!(r, &E::ScalarField::one()).inverse().unwrap();
@@ -121,11 +119,10 @@ pub fn verify_aggregate_proof<E: Pairing, R: Rng>(
     // final value ip_ab is what we want to compare in the groth16 aggregated equation A * B
     acc.products(vec![left.0, middle.0, right.0], proof.ip_ab.clone());
 
-    let res = acc.verify();
-    dbg!(format!("aggregate verify done: valid ? {}", res));
-    match res {
-        true => Ok(()),
-        false => Err(Error::InvalidProof("Proof Verification Failed".to_string())),
+    if acc.verify() {
+        Ok(())
+    } else {
+        Err(Error::InvalidProof("Proof Verification Failed".to_string()))
     }
 }
 
@@ -138,7 +135,7 @@ fn verify_tipp_mipp<E: Pairing, R: Rng>(
     r_shift: &E::ScalarField,
     transcript: &mut OnchainTranscript,
     acc: &mut PairingCheck<E, R>,
-) {
+) -> Result<(), Error> {
     // (T,U), Z for TIPP and MIPP  and all challenges
     let (final_res, final_r, challenges, challenges_inv) =
         gipa_verify_tipp_mipp(&proof, r_shift, transcript);
@@ -211,7 +208,9 @@ fn verify_tipp_mipp<E: Pairing, R: Rng>(
     // Verify base inner product commitment
     // Z ==  c ^ r
     if final_res.zc != final_c.mul(final_r) {
-        panic!("TODO Invalid");
+        Err(Error::InvalidProof("TIPP verification failed".to_string()))
+    } else {
+        Ok(())
     }
 }
 
