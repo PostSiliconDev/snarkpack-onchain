@@ -50,7 +50,12 @@ impl OnchainTranscript {
 
     /// Append a challenge/scalar to the transcript.
     pub fn append_scalar<F: Field>(&mut self, scalar: &F) {
-        // Self::append_message(self, b"", &scalar.into_bigint().to_bytes_be());
+        let mut buf_x = vec![];
+        scalar
+            .serialize_with_mode(&mut buf_x, Compress::Yes)
+            .unwrap();
+        buf_x.reverse();
+        Self::append_message(self, b"", &buf_x);
     }
 
     /// Generate the challenge for the current transcript,
