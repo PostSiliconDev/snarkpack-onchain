@@ -9,6 +9,7 @@ use ark_std::{
     vec::Vec,
 };
 use rayon::prelude::*;
+
 /// This module implements two binding commitment schemes used in the Groth16
 /// aggregation.
 /// The first one is a commitment scheme that commits to a single vector $a$ of

@@ -1,8 +1,7 @@
 use ark_bls12_381::{Bls12_381, Fr};
 use ark_ff::One;
 use ark_groth16::{prepare_verifying_key, Groth16};
-use snarkpack;
-use snarkpack::transcript::Transcript;
+use snarkpack_onchain::*;
 
 mod constraints;
 use crate::constraints::Benchmark;
@@ -21,7 +20,7 @@ fn groth16_aggregation() {
     let pvk = prepare_verifying_key(&params.vk);
     // prepare the SRS needed for snarkpack - specialize after to the right
     // number of proofs
-    let srs = snarkpack::srs::setup_fake_srs::<Bls12_381, _>(&mut rng, nproofs);
+    let srs = srs::setup_fake_srs::<Bls12_381, _>(&mut rng, nproofs);
     let (prover_srs, ver_srs) = srs.specialize(nproofs);
     // create all the proofs
     let proofs = (0..nproofs)
@@ -37,26 +36,10 @@ fn groth16_aggregation() {
     let r = Groth16::<Bls12_381>::verify_proof(&pvk, &proofs[1], &inputs).unwrap();
     assert!(r);
 
-    let mut prover_transcript = snarkpack::transcript::new_merlin_transcript(b"test aggregation");
-    prover_transcript.append(b"public-inputs", &all_inputs);
-    let aggregate_proof = snarkpack::aggregate_proofs_with_public_inputs(
-        &prover_srs,
-        &pvk,
-        &mut prover_transcript,
-        &proofs,
-        &all_inputs,
-    )
-    .expect("error in aggregation");
+    let aggregate_proof =
+        aggregate_proofs_with_public_inputs(&prover_srs, &pvk, &proofs, &all_inputs)
+            .expect("error in aggregation");
 
-    let mut ver_transcript = snarkpack::transcript::new_merlin_transcript(b"test aggregation");
-    ver_transcript.append(b"public-inputs", &all_inputs);
-    snarkpack::verify_aggregate_proof(
-        &ver_srs,
-        &pvk,
-        &all_inputs,
-        &aggregate_proof,
-        &mut rng,
-        &mut ver_transcript,
-    )
-    .expect("error in verification");
+    verify_aggregate_proof(&ver_srs, &pvk, &all_inputs, &aggregate_proof, &mut rng)
+        .expect("error in verification");
 }
