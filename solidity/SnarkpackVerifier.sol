@@ -2,7 +2,7 @@
 pragma solidity ^0.8.28;
 
 /**
- * @title SnarkpackVerifier  
+ * @title SnarkpackVerifier
  * @notice Solidity verifier for Snarkpack proof aggregation
  * @dev Optimized implementation with true pairing aggregation and KZG commitments
  */
@@ -140,7 +140,7 @@ contract SnarkpackVerifier {
     struct TranscriptState {
         bytes32 state;
     }
-    
+
     // Pairing accumulator for batch verification
     struct PairingAccumulator {
         BN254.G1Point[] g1Points;
@@ -152,7 +152,7 @@ contract SnarkpackVerifier {
 
     /**
      * @notice Main verification function matching updated Rust verifier
-     * @param verifyingKey The prepared Groth16 verifying key  
+     * @param verifyingKey The prepared Groth16 verifying key
      * @param publicInputs Array of public inputs for each proof
      * @param proof The aggregate proof structure
      * @return True if the proof is valid
@@ -162,10 +162,13 @@ contract SnarkpackVerifier {
         uint256[][] calldata publicInputs,
         AggregateProof calldata proof
     ) external view returns (bool) {
-        // Basic validation
-        if (!_validateInputs(verifyingKey, publicInputs, proof)) {
-            return false;
-        }
+        // 1. TODO Precompiled all challenges
+
+        // 2. TODO Verify & merge TIPP/MIPP
+
+        // 3. TODO Merge final aggregated
+
+        // 4. TODO Pairing verifaction
 
         // Initialize transcript with domain separator
         TranscriptState memory transcript = TranscriptState({
@@ -233,9 +236,9 @@ contract SnarkpackVerifier {
         PairingAccumulator memory acc
     ) internal view returns (bool) {
         // 1. Verify GIPA and get final values
-        (bool gipaValid, uint256[] memory challenges, uint256[] memory challengesInv, uint256 finalR) = 
+        (bool gipaValid, uint256[] memory challenges, uint256[] memory challengesInv, uint256 finalR) =
             _verifyGipa(proof, r, transcript);
-        
+
         if (!gipaValid) {
             return false;
         }
@@ -300,7 +303,7 @@ contract SnarkpackVerifier {
 
         // Compute final R (matches Rust lines 484-488)
         finalR = PolynomialHelpers._computePolynomialEvaluationWithShift(challengesInv, r);
-        
+
         return (true, challenges, challengesInv, finalR);
     }
 
@@ -350,7 +353,7 @@ contract SnarkpackVerifier {
     ) internal view {
         // Compute polynomial evaluation (matches Rust line 400-404)
         uint256 polyEval = PolynomialHelpers._computePolynomialEvaluation(challenges, kzgChallenge);
-        
+
         // Add KZG pairing checks (simplified placeholders)
         acc.count += 2; // Placeholder for KZG v verifications
     }
@@ -369,7 +372,7 @@ contract SnarkpackVerifier {
         uint256 fz = PolynomialHelpers._computePolynomialEvaluation(challenges, kzgChallenge);
         uint256 rInv = _modInverse(r, BN254.P_MOD);
         uint256 fwz = mulmod(fz, rInv, BN254.P_MOD);
-        
+
         // Add KZG pairing checks (simplified placeholders)
         acc.count += 2; // Placeholder for KZG w verifications
     }
@@ -403,23 +406,23 @@ contract SnarkpackVerifier {
         PairingAccumulator memory acc
     ) internal view returns (bool) {
         uint256 n = publicInputs.length;
-        
+
         // Compute r_sum = (r^n - 1) / (r - 1) (matches Rust lines 70-73)
         uint256 rSum = _computeRSum(r, n);
 
         // Left: e(α^r_sum, β) (matches Rust lines 102-110)
         BN254.G1Point memory alphaRSum = verifyingKey.alpha.scalarMul(rSum);
-        
+
         // Right: e(C_agg, δ) (matches Rust lines 113-117)
-        
+
         // Middle: e(g_ic, γ) where g_ic includes totsi (matches Rust lines 120-130)
         BN254.G1Point memory gIC = verifyingKey.gammaABC[0].scalarMul(rSum);
         gIC = gIC.add(proof.totsi); // KZG optimization
-        
+
         // Add final Groth16 pairing equation (non-randomized, matches Rust line 133)
-        _addFinalGroth16Pairing(alphaRSum, verifyingKey.beta, gIC, verifyingKey.gamma, 
+        _addFinalGroth16Pairing(alphaRSum, verifyingKey.beta, gIC, verifyingKey.gamma,
                                proof.aggC, verifyingKey.delta, proof.ipAB, acc);
-        
+
         return true;
     }
 
@@ -438,17 +441,17 @@ contract SnarkpackVerifier {
     ) internal pure {
         // This represents: e(α^r_sum, β) * e(gIC, γ) * e(aggC, δ)^(-1) = ipAB
         // Non-randomized as it's the primary equation (matches Rust comment lines 78-80)
-        
+
         acc.g1Points[acc.count] = alphaRSum;
         acc.g2Points[acc.count] = beta;
         acc.targetValues[acc.count] = 1; // Neutral multiplier
         acc.count++;
-        
+
         acc.g1Points[acc.count] = gIC;
         acc.g2Points[acc.count] = gamma;
         acc.targetValues[acc.count] = 1;
         acc.count++;
-        
+
         // Negate aggC for subtraction in pairing
         acc.g1Points[acc.count] = BN254.G1Point(aggC.x, BN254.P_MOD - aggC.y);
         acc.g2Points[acc.count] = delta;
@@ -463,7 +466,7 @@ contract SnarkpackVerifier {
         PairingAccumulator memory acc
     ) internal view returns (bool) {
         if (acc.count == 0) return true;
-        
+
         // Prepare pairing input for precompile
         uint256[] memory input = new uint256[](acc.count * 6);
         for (uint256 i = 0; i < acc.count; i++) {
@@ -490,29 +493,6 @@ contract SnarkpackVerifier {
         }
 
         return success && result == 1;
-    }
-
-    // Utility functions
-    function _validateInputs(
-        VerifyingKey calldata verifyingKey,
-        uint256[][] calldata publicInputs,
-        AggregateProof calldata proof
-    ) internal pure returns (bool) {
-        uint256 numProofs = publicInputs.length;
-        
-        // Check proof count matches
-        if (numProofs != proof.gipa.commsAB.length * 2) {
-            return false;
-        }
-        
-        // Check public input lengths
-        for (uint256 i = 0; i < numProofs; i++) {
-            if (publicInputs[i].length + 1 != verifyingKey.gammaABC.length) {
-                return false;
-            }
-        }
-        
-        return true;
     }
 
     function _checkFinalCommitment(
@@ -574,7 +554,7 @@ contract SnarkpackVerifier {
         uint256 rand2,
         PairingAccumulator memory acc
     ) internal view {
-        // Simplified MIPP pairings - would need full implementation  
+        // Simplified MIPP pairings - would need full implementation
         acc.count += 2; // Placeholder increment
     }
 
